@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 import httpx
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .event_processor import EventBatchReadError, receive_event_batch
 from .graph import build_graph
@@ -31,6 +31,17 @@ class OrchestratorDecision(BaseModel):
     sinais: dict[str, Any] = Field(default_factory=dict)
     relacionados: list[str] = Field(default_factory=list)
     ligar_a: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_category_in_destination(cls, value: Any) -> Any:
+        """Corrige categoria de resposta usada indevidamente como destino."""
+        if not isinstance(value, dict) or value.get("destino") != "resposta_pendente":
+            return value
+        normalized = dict(value)
+        normalized["destino"] = "chamado"
+        normalized.setdefault("categoria", "resposta_pendente")
+        return normalized
 
     @field_validator("sinais", mode="before")
     @classmethod

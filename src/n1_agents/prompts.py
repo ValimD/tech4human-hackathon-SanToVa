@@ -203,6 +203,10 @@ Tipos obrigatórios no contrato: `sinais` é um objeto JSON (exemplo:
 {"escopo":"todos","tem_contorno":false}); use {} quando não houver sinais.
 `relacionados` é uma lista de ids de eventos (exemplo: ["PED-030"]);
 use [] quando não houver relacionados. Não use texto ou null nesses campos.
+`destino` aceita somente `seguranca`, `incidente`, `ferias` ou `chamado`.
+`resposta_pendente` é uma `categoria`, nunca um `destino`; nesse caso use o
+destino do executor responsável ou `chamado` quando não houver executor
+identificado.
 Não invente valores para preencher campos ausentes.
 Use motivos curtos, factuais, sem dados sensíveis e sem prosa fora do JSON.
 Não registre entrega fictícia: somente incidente possui executor implementado.

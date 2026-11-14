@@ -355,6 +355,18 @@ def test_decision_normalizes_empty_criticidade_for_non_incident_routes():
     assert decision.criticidade is None
 
 
+def test_decision_routes_response_pending_to_called_executor():
+    decision = OrchestratorDecision.model_validate(
+        {
+            "destino": "resposta_pendente",
+            "motivo": "Resposta a uma pendência anterior.",
+        }
+    )
+
+    assert decision.destino == "chamado"
+    assert decision.categoria == "resposta_pendente"
+
+
 @pytest.mark.parametrize(
     "field, value",
     [

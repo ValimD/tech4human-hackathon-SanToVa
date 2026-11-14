@@ -51,13 +51,14 @@ def parse_incident_result(content: str) -> IncidentResult:
     return IncidentResult.model_validate(payload)
 
 
-def build_incident_graph(model=None, tools=None):
+def build_incident_graph(model=None, tools=None, *, max_iterations: int = 8):
     """Monta o grafo do executor com o prompt e tools de incidentes."""
 
     return build_graph(
         model=model,
         tools=tools,
         system_prompt=INCIDENT_SYSTEM_PROMPT,
+        max_iterations=max_iterations,
     )
 
 
@@ -83,7 +84,7 @@ def run_incident_agent(
             + ", ".join(sorted(missing_tools))
         )
 
-    graph = build_incident_graph(model=model, tools=tools)
+    graph = build_incident_graph(model=model, tools=tools, max_iterations=8)
     result = graph.invoke(
         {
             "messages": [],

@@ -1,10 +1,10 @@
 """Ponto de entrada para uma execução local do grafo."""
 
-import json
 import sys
 
 from .config import get_settings
 from .graph import build_graph
+from .incident_agent import IncidentResult
 from .mcp_client import MCPClient
 from .mcp_tools import create_mcp_tools
 from .model import create_chat_model
@@ -16,7 +16,11 @@ def main() -> None:
     arguments = [argument for argument in sys.argv[1:] if argument != "--loop"]
     user_input = " ".join(arguments).strip()
     if not user_input:
-        user_input = input("Prompt: ").strip()
+        user_input = (
+            "Processe os eventos disponíveis"
+            if loop_mode
+            else input("Prompt: ").strip()
+        )
 
     settings = get_settings()
     with MCPClient(
@@ -24,20 +28,27 @@ def main() -> None:
         timeout=settings.mcp_timeout_seconds,
     ) as client:
         if loop_mode:
-            results = run_orchestrator_loop(
+
+            def print_result(result) -> None:
+                if isinstance(result, IncidentResult):
+                    detail = f"incidente {result.criticidade}: {result.acao}"
+                    if result.acao == "falhou":
+                        detail += "; revisão humana prioritária"
+                elif result.destino == "incidente":
+                    detail = f"incidente {result.criticidade}: encaminhando"
+                else:
+                    detail = (
+                        f"{result.destino}: pendente de revisão humana (sem executor)"
+                    )
+                # Não imprime corpo, remetente, sinais ou texto livre do modelo.
+                print(f"{result.evento_id!r}: {detail}", flush=True)
+
+            run_orchestrator_loop(
                 user_input,
                 client=client,
                 model=create_chat_model(),
-            )
-            print(
-                json.dumps(
-                    [
-                        result.model_dump()
-                        for result in results
-                    ],
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                on_result=print_result,
+                on_summary=lambda message: print(message, flush=True),
             )
             return
 

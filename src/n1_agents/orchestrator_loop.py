@@ -157,7 +157,7 @@ def _classify_batch(
     events: list[dict[str, Any]],
     on_summary: Callable[[str], None] | None,
 ) -> list[OrchestratorDecision]:
-    """Classifica um lote e corrige uma resposta incompleta uma vez."""
+    """Classifica um lote, isolando eventos se a resposta continuar incompleta."""
     request = {
         "solicitacao": prompt,
         "eventos": events,
@@ -177,7 +177,30 @@ def _classify_batch(
             return parse_batch_decisions(state["response"], events)
         except ValueError:
             if attempt == 1:
-                raise
+                decisions: list[OrchestratorDecision] = []
+                for event in events:
+                    single_request = {
+                        "solicitacao": prompt,
+                        "eventos": [event],
+                        "correcao": (
+                            "Classifique este único evento e retorne exatamente "
+                            "uma decisão para o id recebido."
+                        ),
+                    }
+                    single_state = graph.invoke(
+                        {
+                            "messages": [],
+                            "user_input": json.dumps(
+                                single_request,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                            ),
+                        }
+                    )
+                    decisions.extend(
+                        parse_batch_decisions(single_state["response"], [event])
+                    )
+                return decisions
             request["correcao"] = (
                 "A resposta anterior não cobriu exatamente todos os eventos. "
                 "Retorne uma decisão para cada evento, sem omitir nenhum id."

@@ -255,6 +255,50 @@ def test_loop_retries_incomplete_batch_without_recollecting_events(monkeypatch):
     ]
 
 
+def test_loop_splits_batch_when_model_keeps_omitting_events(monkeypatch):
+    class SplitBatchModel:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, messages):
+            import json
+
+            self.calls += 1
+            payload = json.loads(messages[-1].content)
+            events = payload["eventos"]
+            if self.calls <= 2:
+                selected = events[:1]
+            else:
+                selected = events
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "decisoes": [
+                            {
+                                "evento_id": item["id"],
+                                "remetente": item["de"],
+                                "destino": "chamado",
+                                "motivo": "Triagem pendente.",
+                            }
+                            for item in selected
+                        ]
+                    }
+                )
+            )
+
+    client = BatchClient([event(1), event(2), {"evento": None, "encerrado": True}])
+    model = SplitBatchModel()
+    monkeypatch.setattr(
+        "n1_agents.orchestrator_loop.dispatch_decision",
+        lambda decision, **kwargs: None,
+    )
+
+    results = run_orchestrator_loop("Leia", client=client, model=model)
+
+    assert [decision.evento_id for decision in results] == ["PED-1", "PED-2"]
+    assert model.calls == 4
+
+
 def test_empty_queue_never_calls_model():
     client = BatchClient([{"evento": None}, {"evento": None, "encerrado": True}])
     model = BatchModel()

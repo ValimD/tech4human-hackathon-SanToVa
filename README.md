@@ -2,6 +2,9 @@
 
 Projeto inicial para criação de agentes com [LangGraph](https://langchain-ai.github.io/langgraph/).
 
+Para preparar o ambiente e rodar os agentes com o MCP, siga o
+[guia de execução](README.execucao.md).
+
 ## Contexto para agentes de codificação
 
 As instruções de stack, arquitetura, segurança e validação ficam em
@@ -116,11 +119,43 @@ python -m n1_agents.main "Como redefino minha senha?"
 Para processar eventos em loop e despachar incidentes:
 
 ```bash
-python -m n1_agents.main --loop "Leia os eventos disponíveis"
+python -m n1_agents.main --loop
 ```
 
-O loop processa no máximo 20 eventos por execução, para quando o MCP informar
-que não há evento e envia decisões `incidente` ao agente `agente-incidente`.
+O modo `--loop` permanece ouvindo o MCP. `evento: null` significa que não há
+evento naquele momento e faz o orquestrador aguardar o próximo ciclo; o
+encerramento só é terminal quando `encerrado: true` vier sem evento. Se o MCP
+enviar `encerrado: true` junto com um evento, esse evento é processado e uma
+última leitura confirma o encerramento. O loop também termina quando o processo
+recebe interrupção (`Ctrl+C`). Cada decisão `incidente` é convertida em
+`IncidentHandoff` e executada pelo agente `agente-incidente`, que consulta,
+registra/atualiza e avisa o time de Produto.
+
+O orquestrador coleta **até 5 eventos por lote** com chamadas sequenciais a
+`proximo_evento` (a ferramenta entrega um evento por chamada). Espera até 10
+segundos somente na primeira leitura; se a fila esvaziar, analisa o lote parcial
+imediatamente para não atrasar incidentes. A classificação recebe o lote inteiro,
+sem carregar o histórico de mensagens de lotes anteriores. Consultas MCP
+continuam disponíveis para identificar duplicatas e follow-ups.
+
+A fila vazia não chama o LLM. Cada lote exige exatamente uma decisão por evento,
+com id e remetente preservados. Incidentes P0/P1/P2 são despachados por prioridade;
+os destinos `seguranca`, `ferias` e `chamado` ficam sinalizados no terminal como
+pendentes de revisão humana, sem simular executores inexistentes.
+
+O terminal mostra resumos locais de coleta, encaminhamento e resultado, sem
+imprimir corpos, remetentes ou justificativas livres. Não há chamada de LLM para
+produzir esses resumos. Falhas explícitas do executor são registradas no retorno
+como `falhou` e sinalizadas para revisão prioritária; o restante do lote continua.
+Não se repetem automaticamente ações que possam já ter sido executadas.
+
+O encerramento normal é o `encerrado: true` do cenário MCP, mesmo que o contêiner
+Docker continue ativo. Erros de transporte/coleta e contratos inválidos continuam
+sendo falhas explícitas, não são interpretados como encerramento bem-sucedido.
+
+Para limitar ciclos durante uma execução controlada, use
+`run_orchestrator_loop(..., max_events=N)`. O padrão é escutar continuamente. Cada ciclo coleta um lote de até 5 eventos
+ou aguarda a fila; `max_events` mantém o nome público e limita ciclos, não eventos.
 
 Para testar a conexão MCP e listar todos os eventos disponíveis:
 

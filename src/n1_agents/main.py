@@ -1,16 +1,54 @@
 """Ponto de entrada para uma execução local do grafo."""
 
+import json
+import sys
+
+from .config import get_settings
 from .graph import build_graph
+from .mcp_client import MCPClient
+from .mcp_tools import create_mcp_tools
+from .model import create_chat_model
+from .orchestrator_loop import run_orchestrator_loop
 
 
 def main() -> None:
-    graph = build_graph()
-    result = graph.invoke(
-        {
-            "messages": [],
-            "user_input": "Não consigo acessar minha conta",
-        }
-    )
+    loop_mode = "--loop" in sys.argv[1:]
+    arguments = [argument for argument in sys.argv[1:] if argument != "--loop"]
+    user_input = " ".join(arguments).strip()
+    if not user_input:
+        user_input = input("Prompt: ").strip()
+
+    settings = get_settings()
+    with MCPClient(
+        settings.mcp_endpoint,
+        timeout=settings.mcp_timeout_seconds,
+    ) as client:
+        if loop_mode:
+            results = run_orchestrator_loop(
+                user_input,
+                client=client,
+                model=create_chat_model(),
+            )
+            print(
+                json.dumps(
+                    [
+                        result.model_dump()
+                        for result in results
+                    ],
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+
+        tools = create_mcp_tools(client, agent_name=settings.agent_name)
+        graph = build_graph(model=create_chat_model(), tools=tools)
+        result = graph.invoke(
+            {
+                "messages": [],
+                "user_input": user_input,
+            }
+        )
     print(result["response"])
 
 

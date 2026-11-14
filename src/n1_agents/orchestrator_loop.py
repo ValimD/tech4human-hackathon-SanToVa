@@ -150,6 +150,43 @@ def parse_batch_decisions(
     )
 
 
+def _classify_batch(
+    graph,
+    *,
+    prompt: str,
+    events: list[dict[str, Any]],
+    on_summary: Callable[[str], None] | None,
+) -> list[OrchestratorDecision]:
+    """Classifica um lote e corrige uma resposta incompleta uma vez."""
+    request = {
+        "solicitacao": prompt,
+        "eventos": events,
+    }
+    for attempt in range(2):
+        state = graph.invoke(
+            {
+                "messages": [],
+                "user_input": json.dumps(
+                    request,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+            }
+        )
+        try:
+            return parse_batch_decisions(state["response"], events)
+        except ValueError:
+            if attempt == 1:
+                raise
+            request["correcao"] = (
+                "A resposta anterior não cobriu exatamente todos os eventos. "
+                "Retorne uma decisão para cada evento, sem omitir nenhum id."
+            )
+            if on_summary:
+                on_summary("Contrato incompleto; solicitando correção do mesmo lote.")
+    raise AssertionError("Tentativas de classificação esgotadas")
+
+
 def run_orchestrator_loop(
     prompt: str,
     *,
@@ -195,17 +232,12 @@ def run_orchestrator_loop(
             total += len(events)
             if on_summary:
                 on_summary(f"Lote: {len(events)} eventos; total recebido: {total}.")
-            state = graph.invoke(
-                {
-                    "messages": [],
-                    "user_input": json.dumps(
-                        {"solicitacao": prompt, "eventos": events},
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                }
+            decisions = _classify_batch(
+                graph,
+                prompt=prompt,
+                events=events,
+                on_summary=on_summary,
             )
-            decisions = parse_batch_decisions(state["response"], events)
             for decision in decisions:
                 results.append(decision)
                 if on_result:

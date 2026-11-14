@@ -208,6 +208,53 @@ def test_missing_decision_rejected_before_dispatch():
         run_orchestrator_loop("Leia", client=client, model=MissingModel())
 
 
+def test_loop_retries_incomplete_batch_without_recollecting_events(monkeypatch):
+    class RetryBatchModel:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, messages):
+            import json
+
+            self.calls += 1
+            payload = json.loads(messages[-1].content)
+            events = payload["eventos"]
+            selected = events if self.calls == 2 else events[:1]
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "decisoes": [
+                            {
+                                "evento_id": item["id"],
+                                "remetente": item["de"],
+                                "destino": "chamado",
+                                "motivo": "Triagem pendente.",
+                            }
+                            for item in selected
+                        ]
+                    }
+                )
+            )
+
+    client = BatchClient([event(1), event(2), {"evento": None, "encerrado": True}])
+    dispatched = []
+    monkeypatch.setattr(
+        "n1_agents.orchestrator_loop.dispatch_decision",
+        lambda decision, **kwargs: dispatched.append(decision.evento_id),
+    )
+    model = RetryBatchModel()
+
+    results = run_orchestrator_loop("Leia", client=client, model=model)
+
+    assert model.calls == 2
+    assert [decision.evento_id for decision in results] == ["PED-1", "PED-2"]
+    assert [call[0] for call in client.calls] == [
+        "proximo_evento",
+        "proximo_evento",
+        "proximo_evento",
+    ]
+
+
 def test_empty_queue_never_calls_model():
     client = BatchClient([{"evento": None}, {"evento": None, "encerrado": True}])
     model = BatchModel()

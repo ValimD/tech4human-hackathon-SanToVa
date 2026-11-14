@@ -207,3 +207,24 @@ def test_incident_agent_can_consult_register_and_notify() -> None:
         "registrar",
         "enviar_mensagem",
     ]
+
+
+def test_incident_result_is_bound_to_handoff_event() -> None:
+    client = ActionMCP()
+    handoff = IncidentHandoff(
+        evento_id="PED-005",
+        remetente="ana@t4h.exemplo",
+        destino="incidente",
+        criticidade="P1",
+        categoria="incidente_produto",
+        produto="Portal do Cliente",
+        motivo="Falha parcial.",
+    )
+
+    result = run_incident_agent(
+        handoff,
+        model=ActionModel(),
+        client=client,
+    )
+
+    assert result.evento_id == "PED-005"

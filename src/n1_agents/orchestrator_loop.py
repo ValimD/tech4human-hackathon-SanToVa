@@ -252,8 +252,13 @@ def run_orchestrator_loop(
             waiting = True
             if on_summary:
                 on_summary("Fila vazia; aguardando eventos no MCP.")
-        if collection_error is not None:
+        if collection_error is not None and collection_error.code != 504:
             raise collection_error
+        if collection_error is not None and on_summary:
+            on_summary(
+                "MCP retornou 504 em proximo_evento; "
+                "continuando a escuta sem repetir a leitura automaticamente."
+            )
         if closed:
             if on_summary:
                 on_summary(f"MCP encerrado; {total} eventos recebidos.")

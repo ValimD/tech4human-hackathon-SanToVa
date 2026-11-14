@@ -308,16 +308,48 @@ def test_unimplemented_destinations_do_not_execute(destination):
     assert dispatch_decision(decision, model=None, client=BatchClient([])) is None
 
 
-def test_loop_dispatches_partial_batch_before_reporting_collection_error(monkeypatch):
-    client = BatchClient([event(1), {"status": "erro", "codigo": 504}])
+def test_loop_dispatches_partial_batch_before_recovering_504(monkeypatch):
+    client = BatchClient(
+        [
+            event(1),
+            {"status": "erro", "codigo": 504},
+            {"evento": None, "encerrado": True},
+        ]
+    )
     dispatched = []
     monkeypatch.setattr(
         "n1_agents.orchestrator_loop.dispatch_decision",
         lambda decision, **kwargs: dispatched.append(decision.evento_id),
     )
-    with pytest.raises(RuntimeError, match="504"):
-        run_orchestrator_loop("Leia", client=client, model=BatchModel())
+    run_orchestrator_loop("Leia", client=client, model=BatchModel())
     assert dispatched == ["PED-1"]
+
+
+def test_loop_continues_after_transient_504(monkeypatch):
+    client = BatchClient(
+        [
+            event(1),
+            {"status": "erro", "codigo": 504},
+            event(2),
+            {"evento": None, "encerrado": True},
+        ]
+    )
+    dispatched = []
+    summaries = []
+    monkeypatch.setattr(
+        "n1_agents.orchestrator_loop.dispatch_decision",
+        lambda decision, **kwargs: dispatched.append(decision.evento_id),
+    )
+
+    run_orchestrator_loop(
+        "Leia",
+        client=client,
+        model=BatchModel(),
+        on_summary=summaries.append,
+    )
+
+    assert dispatched == ["PED-1", "PED-2"]
+    assert any("504" in summary for summary in summaries)
 
 
 @pytest.mark.parametrize(

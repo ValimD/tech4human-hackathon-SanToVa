@@ -74,6 +74,7 @@ def run_incident_agent(
         client,
         agent_name="agente-incidente",
         allowed_names=INCIDENT_TOOL_NAMES,
+        fixed_arguments={"evento_id": handoff.evento_id},
     )
     required_tools = {"consultar", "registrar", "atualizar", "enviar_mensagem"}
     available_tools = {tool.name for tool in tools}
@@ -105,4 +106,7 @@ def run_incident_agent(
             criticidade=handoff.criticidade,
             motivo=result["response"],
         )
-    return parse_incident_result(result["response"])
+    parsed = parse_incident_result(result["response"])
+    if parsed.evento_id != handoff.evento_id:
+        return parsed.model_copy(update={"evento_id": handoff.evento_id})
+    return parsed

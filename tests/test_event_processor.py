@@ -118,6 +118,20 @@ def test_batch_reports_code_and_preserves_collected_events():
     assert client.calls == 2
 
 
+def test_batch_keeps_504_explicit_for_loop_recovery():
+    from n1_agents.event_processor import receive_event_batch
+
+    client = SequenceMCP(
+        [
+            {"evento": {"id": "PED-1", "de": "a@t4h.exemplo"}},
+            {"status": "erro", "codigo": 504},
+        ]
+    )
+    with pytest.raises(RuntimeError, match="504") as caught:
+        receive_event_batch(client)
+    assert caught.value.code == 504
+
+
 def test_batch_stops_after_three_structured_503_attempts(monkeypatch):
     from n1_agents.event_processor import receive_event_batch
 

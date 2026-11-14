@@ -70,6 +70,7 @@ def create_mcp_tools(
     *,
     agent_name: str,
     allowed_names: frozenset[str] | None = None,
+    fixed_arguments: dict[str, Any] | None = None,
 ) -> list[StructuredTool]:
     """Converte as ferramentas MCP publicadas em tools chamáveis pelo modelo."""
 
@@ -83,8 +84,19 @@ def create_mcp_tools(
             continue
         description = spec.get("description", f"Ferramenta MCP {name}.")
         args_schema = _args_schema(spec)
+        properties = spec.get("inputSchema", {}).get("properties", {})
+        fixed_for_tool = {
+            key: value
+            for key, value in (fixed_arguments or {}).items()
+            if key in properties
+        }
 
-        def call_tool(_name=name, **arguments: Any) -> dict[str, Any]:
+        def call_tool(
+            _name=name,
+            _fixed_arguments=fixed_for_tool,
+            **arguments: Any,
+        ) -> dict[str, Any]:
+            arguments.update(_fixed_arguments)
             result = client.call_tool(
                 _name,
                 {"agente": agent_name, **arguments},

@@ -140,3 +140,70 @@ def test_incident_agent_executes_an_mcp_tool_before_returning() -> None:
     assert result.incidente_id == "INC-001"
     assert client.calls[0][0] == "consultar"
     assert client.calls[0][1]["agente"] == "agente-incidente"
+
+
+def test_incident_agent_can_consult_register_and_notify() -> None:
+    class MultiActionModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def bind_tools(self, tools, **kwargs):
+            tool_choice = kwargs.get("tool_choice")
+            parent = self
+
+            class BoundModel:
+                def invoke(self, messages):
+                    if tool_choice == "none":
+                        return AIMessage(
+                            content=(
+                                '{"evento_id":"PED-029","acao":"aberto",'
+                                '"incidente_id":"INC-001","criticidade":"P0",'
+                                '"motivo":"Incidente aberto e time avisado."}'
+                            )
+                        )
+                    parent.calls += 1
+                    names = ["consultar", "registrar", "enviar_mensagem"]
+                    if parent.calls <= len(names):
+                        return AIMessage(
+                            content="",
+                            tool_calls=[
+                                {
+                                    "name": names[parent.calls - 1],
+                                    "args": {},
+                                    "id": f"call-{parent.calls}",
+                                }
+                            ],
+                        )
+                    return AIMessage(
+                        content=(
+                            '{"evento_id":"PED-029","acao":"aberto",'
+                            '"incidente_id":"INC-001","criticidade":"P0",'
+                            '"motivo":"Incidente aberto e time avisado."}'
+                        )
+                    )
+
+            return BoundModel()
+
+    client = ActionMCP()
+    handoff = IncidentHandoff(
+        evento_id="PED-029",
+        remetente="ana@t4h.exemplo",
+        destino="incidente",
+        criticidade="P0",
+        categoria="incidente_produto",
+        produto="Portal do Cliente",
+        motivo="Produto fora do ar para todos.",
+    )
+
+    result = run_incident_agent(
+        handoff,
+        model=MultiActionModel(),
+        client=client,
+    )
+
+    assert result.acao == "aberto"
+    assert [call[0] for call in client.calls] == [
+        "consultar",
+        "registrar",
+        "enviar_mensagem",
+    ]
